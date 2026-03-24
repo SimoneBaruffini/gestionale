@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { Save, Building, CreditCard, FileText } from 'lucide-react'
-
+import { Save, Building, CreditCard, FileText, Users } from 'lucide-react'
 type Impostazioni = {
   id: string
   ragione_sociale: string
@@ -21,7 +20,53 @@ type Impostazioni = {
   aliquota_iva_default: number
   note: string
 }
+// Componente gestione utenti
+function GestioneUtenti() {
+  const [utenti, setUtenti] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
+  useEffect(() => { caricaUtenti() }, [])
+
+  async function caricaUtenti() {
+    setLoading(true)
+    const { data } = await supabase.from('profili').select('*').order('created_at')
+    if (data) setUtenti(data)
+    setLoading(false)
+  }
+
+  async function aggiornaRuolo(id: string, ruolo: string) {
+    await supabase.from('profili').update({ ruolo }).eq('id', id)
+    caricaUtenti()
+  }
+
+  if (loading) return <p className="text-gray-400 text-sm">Caricamento...</p>
+
+  return (
+    <div className="space-y-2">
+      {utenti.map(u => (
+        <div key={u.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+          <div>
+            <p className="text-sm font-medium text-gray-800">
+              {u.nome ? `${u.nome} ${u.cognome}` : u.email}
+            </p>
+            <p className="text-xs text-gray-500">{u.email}</p>
+          </div>
+          <select
+            value={u.ruolo}
+            onChange={e => aggiornaRuolo(u.id, e.target.value)}
+            className="border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="admin">Admin</option>
+            <option value="commerciale">Commerciale</option>
+            <option value="magazziniere">Magazziniere</option>
+            <option value="contabile">Contabile</option>
+            <option value="operatore">Operatore</option>
+          </select>
+        </div>
+      ))}
+    </div>
+  )
+}
 function Impostazioni() {
   const [loading, setLoading] = useState(true)
   const [salvato, setSalvato] = useState(false)
@@ -179,8 +224,8 @@ function Impostazioni() {
         </div>
       </div>
 
-      {/* Dati bancari */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+     {/* Dati bancari */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-4">
         <div className="flex items-center gap-2 mb-4">
           <CreditCard size={18} className="text-blue-600" />
           <h3 className="font-semibold text-gray-800">Dati bancari</h3>
@@ -192,6 +237,15 @@ function Impostazioni() {
           onChange={e => setForm({...form, iban: e.target.value})}
           className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
+      </div>
+
+      {/* Gestione utenti */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Users size={18} className="text-blue-600" />
+          <h3 className="font-semibold text-gray-800">Gestione utenti</h3>
+        </div>
+        <GestioneUtenti />
       </div>
     </div>
   )
