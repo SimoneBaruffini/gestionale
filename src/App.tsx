@@ -1,5 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { supabase } from './lib/supabase'
 import Layout from './components/Layout'
+import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Anagrafica from './pages/Anagrafica'
 import Magazzino from './pages/Magazzino'
@@ -12,8 +15,34 @@ import HR from './pages/HR'
 import Progetti from './pages/Progetti'
 import Impostazioni from './pages/Impostazioni'
 
-// App principale - per aggiungere nuove pagine aggiungi un import e una Route
 function App() {
+  const [utente, setUtente] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    // Controlla se l'utente è già loggato
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUtente(session?.user ?? null)
+      setLoading(false)
+    })
+
+    // Ascolta cambiamenti di login/logout
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUtente(session?.user ?? null)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  if (loading) return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <p className="text-gray-400">Caricamento...</p>
+    </div>
+  )
+
+  // Se non loggato mostra login
+  if (!utente) return <Login />
+
   return (
     <BrowserRouter>
       <Routes>

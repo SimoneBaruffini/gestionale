@@ -59,9 +59,15 @@ function Layout() {
           ))}
         </nav>
 
-        {/* Footer menu */}
+       {/* Footer menu */}
         <div className="p-4 border-t border-gray-200">
-          <p className="text-xs text-gray-400 text-center">v1.0.0</p>
+          <button
+            onClick={async () => await supabase.auth.signOut()}
+            className="w-full text-xs text-gray-400 hover:text-red-500 transition-colors text-center"
+          >
+            Esci dal sistema
+          </button>
+          <p className="text-xs text-gray-400 text-center mt-1">v1.0.0</p>
         </div>
       </aside>
 
