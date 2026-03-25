@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { Plus, Search, Pencil, Trash2, Eye } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2 } from 'lucide-react'
 
 type Cliente = { id: string; ragione_sociale: string }
 type Prodotto = { id: string; codice: string; descrizione: string; prezzo_vendita: number }
@@ -81,8 +81,6 @@ function Vendite() {
   function aggiornaRiga(index: number, campo: string, valore: string | number) {
     const nuoveRighe = [...righe]
     nuoveRighe[index] = { ...nuoveRighe[index], [campo]: valore }
-
-    // Se seleziona un prodotto, compila automaticamente
     if (campo === 'prodotto_id') {
       const prodotto = prodotti.find(p => p.id === valore)
       if (prodotto) {
@@ -90,8 +88,6 @@ function Vendite() {
         nuoveRighe[index].prezzo_unitario = prodotto.prezzo_vendita
       }
     }
-
-    // Ricalcola totale riga
     const q = nuoveRighe[index].quantita
     const p = nuoveRighe[index].prezzo_unitario
     nuoveRighe[index].totale = q * p
@@ -168,6 +164,44 @@ function Vendite() {
     setRighe([])
   }
 
+  async function convertiInFattura(ordine: Ordine) {
+    if (!confirm('Vuoi convertire questo ordine in fattura?')) return
+    const anno = new Date().getFullYear()
+    const { count } = await supabase.from('fatture').select('*', { count: 'exact', head: true }).eq('tipo', 'attiva')
+    const numero = `FT-${anno}-${String((count || 0) + 1).padStart(4, '0')}`
+
+    const { data: fattura } = await supabase.from('fatture').insert([{
+      numero,
+      tipo: 'attiva',
+      data: new Date().toISOString().split('T')[0],
+      cliente_id: ordine.cliente_id,
+      ordine_id: ordine.id,
+      stato: 'emessa',
+      totale_imponibile: ordine.totale_imponibile,
+      totale_iva: ordine.totale_iva,
+      totale: ordine.totale,
+    }]).select().single()
+
+    if (fattura) {
+      const { data: righeOrdine } = await supabase.from('ordini_righe').select('*').eq('ordine_id', ordine.id)
+      if (righeOrdine) {
+        await supabase.from('fatture_righe').insert(
+          righeOrdine.map(r => ({
+            fattura_id: fattura.id,
+            descrizione: r.descrizione,
+            quantita: r.quantita,
+            prezzo_unitario: r.prezzo_unitario,
+            iva: r.iva,
+            totale: r.totale,
+          }))
+        )
+      }
+      await supabase.from('ordini').update({ stato: 'consegnato' }).eq('id', ordine.id)
+      alert(`Fattura ${numero} creata con successo!`)
+      caricaDati()
+    }
+  }
+
   const ordiniFiltrati = ordini.filter(o =>
     o.numero?.toLowerCase().includes(ricerca.toLowerCase()) ||
     o.anagrafica?.ragione_sociale?.toLowerCase().includes(ricerca.toLowerCase())
@@ -188,7 +222,6 @@ function Vendite() {
 
   return (
     <div className="p-6">
-      {/* Intestazione */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">Vendite & Ordini</h2>
@@ -202,7 +235,6 @@ function Vendite() {
         </button>
       </div>
 
-      {/* Barra ricerca */}
       <div className="relative mb-4">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
         <input
@@ -214,7 +246,6 @@ function Vendite() {
         />
       </div>
 
-      {/* Tabella ordini */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         {loading ? (
           <p className="text-center text-gray-400 py-8">Caricamento...</p>
@@ -246,6 +277,12 @@ function Vendite() {
                   <td className="px-4 py-3 font-medium text-gray-800">€ {o.totale?.toFixed(2)}</td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
+                      <button
+                        onClick={() => convertiInFattura(o)}
+                        className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200"
+                      >
+                        → Fattura
+                      </button>
                       <button onClick={() => apriModifica(o)} className="text-blue-500 hover:text-blue-700">
                         <Pencil size={16} />
                       </button>
@@ -261,15 +298,12 @@ function Vendite() {
         )}
       </div>
 
-      {/* Form ordine */}
       {mostraForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-full max-w-3xl shadow-xl max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-bold text-gray-800 mb-4">
               {ordineSelezionato ? 'Modifica ordine' : 'Nuovo ordine'}
             </h3>
-
-            {/* Dati ordine */}
             <div className="grid grid-cols-2 gap-3 mb-4">
               <input
                 type="text"
@@ -307,7 +341,6 @@ function Vendite() {
               </select>
             </div>
 
-            {/* Righe ordine */}
             <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="font-semibold text-gray-700">Prodotti</h4>
@@ -318,7 +351,6 @@ function Vendite() {
                   <Plus size={14} /> Aggiungi riga
                 </button>
               </div>
-
               {righe.length === 0 ? (
                 <p className="text-gray-400 text-sm text-center py-4 border border-dashed border-gray-200 rounded-lg">
                   Nessun prodotto — clicca "Aggiungi riga"
@@ -373,7 +405,6 @@ function Vendite() {
               )}
             </div>
 
-            {/* Totali */}
             {righe.length > 0 && (
               <div className="bg-gray-50 rounded-lg p-3 mb-4 text-sm">
                 <div className="flex justify-between text-gray-600 mb-1">
@@ -391,7 +422,6 @@ function Vendite() {
               </div>
             )}
 
-            {/* Note */}
             <textarea
               placeholder="Note ordine"
               value={form.note}
