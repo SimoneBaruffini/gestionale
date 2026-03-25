@@ -150,7 +150,25 @@ function Fatturazione() {
     setFatturaSelezionata(null)
     setRighe([])
   }
+async function marcaComePagata(fattura: Fattura) {
+    if (!confirm('Vuoi marcare questa fattura come pagata?')) return
 
+    await supabase.from('fatture').update({ stato: 'pagata' }).eq('id', fattura.id)
+
+    await supabase.from('prima_nota').insert([{
+      data: new Date().toISOString().split('T')[0],
+      tipo: fattura.tipo === 'attiva' ? 'entrata' : 'uscita',
+      descrizione: `Pagamento fattura ${fattura.numero}`,
+      categoria: 'Fatture',
+      importo: fattura.totale,
+      metodo_pagamento: 'bonifico',
+      fattura_id: fattura.id,
+      cliente_id: fattura.cliente_id,
+    }])
+
+    alert('Fattura pagata e movimento contabile creato automaticamente!')
+    caricaDati()
+  }
   const fattureFiltrate = fatture.filter(f => {
     const matchRicerca = f.numero?.toLowerCase().includes(ricerca.toLowerCase()) ||
       f.anagrafica?.ragione_sociale?.toLowerCase().includes(ricerca.toLowerCase())
@@ -245,6 +263,14 @@ function Fatturazione() {
                   <td className="px-4 py-3 font-medium text-gray-800">€ {f.totale?.toFixed(2)}</td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
+                      {f.stato !== 'pagata' && f.stato !== 'annullata' && (
+  <button
+    onClick={() => marcaComePagata(f)}
+    className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200"
+  >
+    ✓ Pagata
+  </button>
+)}
                       <button onClick={() => apriModifica(f)} className="text-blue-500 hover:text-blue-700">
                         <Pencil size={16} />
                       </button>
