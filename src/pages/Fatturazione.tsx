@@ -3,8 +3,10 @@ import { supabase } from '../lib/supabase'
 import { Plus, Search, Pencil, Trash2 } from 'lucide-react'
 
 type Cliente = { id: string; ragione_sociale: string }
+type Prodotto = { id: string; codice: string; descrizione: string; prezzo_vendita: number }
 type RigaFattura = {
   id?: string
+  prodotto_id?: string
   descrizione: string
   quantita: number
   prezzo_unitario: number
@@ -29,6 +31,7 @@ type Fattura = {
 function Fatturazione() {
   const [fatture, setFatture] = useState<Fattura[]>([])
   const [clienti, setClienti] = useState<Cliente[]>([])
+  const [prodotti, setProdotti] = useState<Prodotto[]>([])
   const [ricerca, setRicerca] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('tutti')
   const [loading, setLoading] = useState(true)
@@ -50,12 +53,14 @@ function Fatturazione() {
 
   async function caricaDati() {
     setLoading(true)
-    const [fattureRes, clientiRes] = await Promise.all([
+    const [fattureRes, clientiRes, prodottiRes] = await Promise.all([
       supabase.from('fatture').select('*, anagrafica(ragione_sociale)').order('created_at', { ascending: false }),
       supabase.from('anagrafica').select('id, ragione_sociale'),
+      supabase.from('prodotti').select('id, codice, descrizione, prezzo_vendita'),
     ])
     if (fattureRes.data) setFatture(fattureRes.data)
     if (clientiRes.data) setClienti(clientiRes.data)
+    if (prodottiRes.data) setProdotti(prodottiRes.data)
     setLoading(false)
   }
 
@@ -67,12 +72,21 @@ function Fatturazione() {
   }
 
   function aggiungiRiga() {
-    setRighe([...righe, { descrizione: '', quantita: 1, prezzo_unitario: 0, iva: 22, totale: 0 }])
+    setRighe([...righe, { prodotto_id: '', descrizione: '', quantita: 1, prezzo_unitario: 0, iva: 22, totale: 0 }])
   }
 
   function aggiornaRiga(index: number, campo: string, valore: string | number) {
     const nuoveRighe = [...righe]
     nuoveRighe[index] = { ...nuoveRighe[index], [campo]: valore }
+    // Se seleziona un prodotto, compila automaticamente descrizione e prezzo
+    if (campo === 'prodotto_id') {
+      const prodotto = prodotti.find(p => p.id === valore)
+      if (prodotto) {
+        nuoveRighe[index].descrizione = prodotto.descrizione
+        nuoveRighe[index].prezzo_unitario = prodotto.prezzo_vendita
+        nuoveRighe[index].prodotto_id = prodotto.id
+      }
+    }
     const q = nuoveRighe[index].quantita
     const p = nuoveRighe[index].prezzo_unitario
     nuoveRighe[index].totale = q * p
@@ -150,11 +164,14 @@ function Fatturazione() {
     setFatturaSelezionata(null)
     setRighe([])
   }
-async function marcaComePagata(fattura: Fattura) {
+
+  async function marcaComePagata(fattura: Fattura) {
     if (!confirm('Vuoi marcare questa fattura come pagata?')) return
 
+    // Aggiorna stato fattura
     await supabase.from('fatture').update({ stato: 'pagata' }).eq('id', fattura.id)
 
+    // Crea movimento contabile automatico
     await supabase.from('prima_nota').insert([{
       data: new Date().toISOString().split('T')[0],
       tipo: fattura.tipo === 'attiva' ? 'entrata' : 'uscita',
@@ -166,9 +183,41 @@ async function marcaComePagata(fattura: Fattura) {
       cliente_id: fattura.cliente_id,
     }])
 
-    alert('Fattura pagata e movimento contabile creato automaticamente!')
+    // Scarica automaticamente il magazzino per ogni prodotto in fattura
+    const { data: righeFattura } = await supabase
+      .from('fatture_righe')
+      .select('*')
+      .eq('fattura_id', fattura.id)
+
+    if (righeFattura) {
+      for (const riga of righeFattura) {
+        if (riga.prodotto_id) {
+          const { data: prodotto } = await supabase
+            .from('prodotti')
+            .select('scorta_attuale')
+            .eq('id', riga.prodotto_id)
+            .single()
+
+          if (prodotto) {
+            await supabase.from('prodotti').update({
+              scorta_attuale: prodotto.scorta_attuale - riga.quantita
+            }).eq('id', riga.prodotto_id)
+
+            await supabase.from('movimenti_magazzino').insert([{
+              prodotto_id: riga.prodotto_id,
+              tipo: 'scarico',
+              quantita: riga.quantita,
+              note: `Scarico automatico fattura ${fattura.numero}`,
+            }])
+          }
+        }
+      }
+    }
+
+    alert('Fattura pagata, movimento contabile e scarico magazzino creati automaticamente!')
     caricaDati()
   }
+
   const fattureFiltrate = fatture.filter(f => {
     const matchRicerca = f.numero?.toLowerCase().includes(ricerca.toLowerCase()) ||
       f.anagrafica?.ragione_sociale?.toLowerCase().includes(ricerca.toLowerCase())
@@ -264,13 +313,13 @@ async function marcaComePagata(fattura: Fattura) {
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
                       {f.stato !== 'pagata' && f.stato !== 'annullata' && (
-  <button
-    onClick={() => marcaComePagata(f)}
-    className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200"
-  >
-    ✓ Pagata
-  </button>
-)}
+                        <button
+                          onClick={() => marcaComePagata(f)}
+                          className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200"
+                        >
+                          ✓ Pagata
+                        </button>
+                      )}
                       <button onClick={() => apriModifica(f)} className="text-blue-500 hover:text-blue-700">
                         <Pencil size={16} />
                       </button>
@@ -317,7 +366,6 @@ async function marcaComePagata(fattura: Fattura) {
               />
               <input
                 type="date"
-                placeholder="Data scadenza"
                 value={form.data_scadenza}
                 onChange={e => setForm({...form, data_scadenza: e.target.value})}
                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -360,19 +408,29 @@ async function marcaComePagata(fattura: Fattura) {
                 <div className="space-y-2">
                   {righe.map((riga, i) => (
                     <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                      <select
+                        value={riga.prodotto_id || ''}
+                        onChange={e => aggiornaRiga(i, 'prodotto_id', e.target.value)}
+                        className="col-span-3 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Prodotto</option>
+                        {prodotti.map(p => (
+                          <option key={p.id} value={p.id}>{p.codice} - {p.descrizione}</option>
+                        ))}
+                      </select>
                       <input
                         type="text"
                         placeholder="Descrizione *"
                         value={riga.descrizione}
                         onChange={e => aggiornaRiga(i, 'descrizione', e.target.value)}
-                        className="col-span-5 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="col-span-3 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                       <input
                         type="number"
                         placeholder="Qta"
                         value={riga.quantita}
                         onChange={e => aggiornaRiga(i, 'quantita', parseFloat(e.target.value))}
-                        className="col-span-2 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="col-span-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                       <input
                         type="number"

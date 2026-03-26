@@ -24,6 +24,10 @@ type Impostazioni = {
 function GestioneUtenti() {
   const [utenti, setUtenti] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [mostraInvito, setMostraInvito] = useState(false)
+  const [emailInvito, setEmailInvito] = useState('')
+  const [ruoloInvito, setRuoloInvito] = useState('operatore')
+  const [invioInCorso, setInvioInCorso] = useState(false)
 
   useEffect(() => { caricaUtenti() }, [])
 
@@ -39,10 +43,35 @@ function GestioneUtenti() {
     caricaUtenti()
   }
 
+  async function invitaUtente() {
+    if (!emailInvito) return alert('Inserisci una email!')
+    setInvioInCorso(true)
+
+    const { data, error } = await supabase.auth.admin.inviteUserByEmail(emailInvito)
+
+    if (error) {
+      alert('Errore: ' + error.message)
+    } else if (data?.user) {
+      // Crea profilo con ruolo selezionato
+      await supabase.from('profili').upsert({
+        id: data.user.id,
+        email: emailInvito,
+        ruolo: ruoloInvito,
+      })
+      alert(`Invito inviato a ${emailInvito}!`)
+      setMostraInvito(false)
+      setEmailInvito('')
+      setRuoloInvito('operatore')
+      caricaUtenti()
+    }
+    setInvioInCorso(false)
+  }
+
   if (loading) return <p className="text-gray-400 text-sm">Caricamento...</p>
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
+      {/* Lista utenti */}
       {utenti.map(u => (
         <div key={u.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
           <div>
@@ -64,6 +93,61 @@ function GestioneUtenti() {
           </select>
         </div>
       ))}
+
+      {/* Bottone invita */}
+      <button
+        onClick={() => setMostraInvito(true)}
+        className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-blue-300 text-blue-600 py-2 rounded-lg hover:bg-blue-50 text-sm font-medium transition-colors"
+      >
+        + Invita nuovo utente
+      </button>
+
+      {/* Form invito */}
+      {mostraInvito && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
+            <h3 className="text-lg font-bold text-gray-800 mb-4">Invita nuovo utente</h3>
+            <div className="space-y-3">
+              <input
+                type="email"
+                placeholder="Email utente *"
+                value={emailInvito}
+                onChange={e => setEmailInvito(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <select
+                value={ruoloInvito}
+                onChange={e => setRuoloInvito(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="admin">Admin</option>
+                <option value="commerciale">Commerciale</option>
+                <option value="magazziniere">Magazziniere</option>
+                <option value="contabile">Contabile</option>
+                <option value="operatore">Operatore</option>
+              </select>
+              <p className="text-xs text-gray-400">
+                L'utente riceverà un'email con il link per creare la sua password.
+              </p>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={() => setMostraInvito(false)}
+                className="flex-1 border border-gray-200 text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-50"
+              >
+                Annulla
+              </button>
+              <button
+                onClick={invitaUtente}
+                disabled={invioInCorso}
+                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {invioInCorso ? 'Invio...' : 'Invia invito'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
