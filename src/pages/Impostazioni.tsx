@@ -43,30 +43,34 @@ function GestioneUtenti() {
     caricaUtenti()
   }
 
-  async function invitaUtente() {
+ async function invitaUtente() {
     if (!emailInvito) return alert('Inserisci una email!')
     setInvioInCorso(true)
 
-    const { data, error } = await supabase.auth.admin.inviteUserByEmail(emailInvito)
-
-    if (error) {
-      alert('Errore: ' + error.message)
-    } else if (data?.user) {
-      // Crea profilo con ruolo selezionato
-      await supabase.from('profili').upsert({
-        id: data.user.id,
-        email: emailInvito,
-        ruolo: ruoloInvito,
+    try {
+      const response = await fetch('/api/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailInvito, ruolo: ruoloInvito }),
       })
-      alert(`Invito inviato a ${emailInvito}!`)
-      setMostraInvito(false)
-      setEmailInvito('')
-      setRuoloInvito('operatore')
-      caricaUtenti()
-    }
-    setInvioInCorso(false)
-  }
 
+      const data = await response.json()
+
+      if (!response.ok) {
+        alert('Errore: ' + data.error)
+      } else {
+        alert(`Invito inviato a ${emailInvito}!`)
+        setMostraInvito(false)
+        setEmailInvito('')
+        setRuoloInvito('operatore')
+        caricaUtenti()
+      }
+    } catch {
+      alert('Errore di connessione')
+    }
+
+    setInvioInCorso(false)
+ }
   if (loading) return <p className="text-gray-400 text-sm">Caricamento...</p>
 
   return (
