@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { Plus, Search, Pencil, Trash2 } from 'lucide-react'
-
+import { generaFatturaPDF } from '../lib/generaPDF'
 type Cliente = { id: string; ragione_sociale: string }
 type Prodotto = { id: string; codice: string; descrizione: string; prezzo_vendita: number }
 type RigaFattura = {
@@ -320,6 +320,13 @@ function Fatturazione() {
                           ✓ Pagata
                         </button>
                       )}
+                     <button
+  onClick={() => generaFatturaPDF(f)}
+  className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded hover:bg-purple-200"
+>
+  📄 PDF
+</button>
+``` 
                       <button onClick={() => apriModifica(f)} className="text-blue-500 hover:text-blue-700">
                         <Pencil size={16} />
                       </button>
